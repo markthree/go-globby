@@ -1,6 +1,6 @@
 {
   "name": "go-globby",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "fast glob. but use go, so high-speed",
   "main": "./npm/index.cjs",
   "module": "./npm/index.mjs",
