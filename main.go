@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,97 +13,92 @@ import (
 type Match = func(name string) bool
 
 var match Match
+var ignore Match
 
-func initMatch(payload string) {
-	payload = payload[:len(payload)-1]
+func initMatchers(payload string) {
+	payload = strings.TrimSuffix(payload, "\n")
 	patterns := strings.Split(payload, ",")
-	patternsLen := len(patterns)
+
+	// Preprocess patterns to separate match and ignore patterns
+	matchPatterns := []string{}
+	ignorePatterns := []string{}
+	for _, pattern := range patterns {
+		if strings.HasPrefix(pattern, "!") {
+			ignorePatterns = append(ignorePatterns, strings.TrimPrefix(pattern, "!"))
+		} else {
+			matchPatterns = append(matchPatterns, pattern)
+		}
+	}
+
+	// Preprocess patterns to remove "**/" prefix
+	processedMatchPatterns := make([]string, len(matchPatterns))
+	processedIgnorePatterns := make([]string, len(ignorePatterns))
+	for i, pattern := range matchPatterns {
+		processedMatchPatterns[i] = strings.Replace(pattern, "**/", "", 1)
+	}
+	for i, pattern := range ignorePatterns {
+		processedIgnorePatterns[i] = strings.Replace(pattern, "**/", "", 1)
+	}
+
+	
 	match = func(name string) bool {
-		for i := 0; i < patternsLen; i++ {
-			matched, err := filepath.Match(strings.Replace(patterns[i], "**/", "", 1), name)
+		for _, pattern := range processedMatchPatterns {
+			matched, err := filepath.Match(pattern, name)
 			if err != nil {
 				fail(err)
 				return false
 			}
-			if !matched {
-				return false
+			if matched {
+				return true
 			}
 		}
-		return true
+		return false
+	}
+
+	ignore = func(name string) bool {
+		for _, pattern := range processedIgnorePatterns {
+			matched, err := filepath.Match(pattern, name)
+			if err != nil {
+				fail(err)
+				return false
+			}
+			if matched {
+				return true
+			}
+		}
+		return false
 	}
 }
+func scanFolder(folder string, deep bool, wg *sync.WaitGroup) {
+	defer wg.Done()
 
-func deepScan(folder string) {
 	entrys, err := os.ReadDir(folder)
 	if err != nil {
 		fail(err)
-	}
-
-	var wg sync.WaitGroup
-	entrysLen := len(entrys)
-
-	if entrysLen == 0 {
 		return
 	}
 
-	wg.Add(entrysLen)
-
-	for i := 0; i < entrysLen; i++ {
-		go func(entry fs.DirEntry) {
-			defer wg.Done()
-			p := path.Join(folder, entry.Name())
-			if entry.IsDir() {
-				deepScan(p)
-				return
+	for _, entry := range entrys {
+		p := path.Join(folder, entry.Name())
+		if entry.IsDir() {
+			if deep {
+				wg.Add(1)
+				go scanFolder(p, true, wg)
 			}
-
-			if match(p) {
+		} else {
+			if !ignore(p) && match(p) {
 				success(p)
 			}
-		}(entrys[i])
+		}
 	}
-
-	wg.Wait()
-	return
-}
-
-func scan(folder string) {
-	entrys, err := os.ReadDir(folder)
-	if err != nil {
-		fail(err)
-	}
-
-	var wg sync.WaitGroup
-	entrysLen := len(entrys)
-
-	if entrysLen == 0 {
-		return
-	}
-
-	wg.Add(entrysLen)
-
-	for i := 0; i < entrysLen; i++ {
-		go func(entry fs.DirEntry) {
-			defer wg.Done()
-			if !entry.IsDir() {
-				p := path.Join(folder, entry.Name())
-				if match(p) {
-					success(p)
-				}
-			}
-		}(entrys[i])
-	}
-
-	wg.Wait()
-	return
 }
 
 func success(path string) {
-	fmt.Fprintf(os.Stdout, "%v\n", path)
+	fmt.Println(path)
 }
 
 func fail(err error) {
-	fmt.Fprintf(os.Stderr, "%v", err)
+	fmt.Fprintln(os.Stderr, err)
 }
 
 func main() {
@@ -117,13 +111,14 @@ func main() {
 		return
 	}
 
-	initMatch(payload)
+	initMatchers(payload)
 
-	if strings.Contains(payload, "**/*") {
-		deepScan(".")
-	} else {
-		scan(".")
-	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go scanFolder(".", strings.Contains(payload, "**/*"), &wg)
+
+	wg.Wait()
 
 	success("EOF")
 }
