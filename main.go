@@ -84,7 +84,7 @@ func scanFolder(folder string, deep bool, wg *sync.WaitGroup) {
 	for _, entry := range entrys {
 		p := path.Join(folder, entry.Name())
 		if entry.IsDir() {
-			if deep {
+			if deep && !ignore(p) {
 				wg.Add(1)
 				pool.Submit(func() { scanFolder(p, deep, wg) })
 			}
