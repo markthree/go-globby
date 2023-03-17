@@ -7,7 +7,8 @@
   "types": "./npm/index.d.ts",
   "files": [
     "npm",
-    "dist"
+    "dist",
+    "scripts/post.mjs"
   ],
   "repository": {
     "type": "git",
@@ -31,7 +32,8 @@
     "prepublishOnly": "pnpm build",
     "release": "bumpp --push --tag --all && npm publish",
     "build-go-bin": "goreleaser release --snapshot --clean",
-    "build": "rimraf -rf npm && pnpm build-go-bin && run-p build-ts build-types"
+    "build": "rimraf -rf npm && pnpm build-go-bin && run-p build-ts build-types",
+    "postinstall": "node scripts/post.mjs"
   },
   "keywords": [
     "go",
