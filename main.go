@@ -8,7 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/panjf2000/ants"
 )
+
+var pool, _ = ants.NewPool(1000000)
 
 type Match = func(name string) bool
 
@@ -40,7 +44,6 @@ func initMatchers(payload string) {
 		processedIgnorePatterns[i] = strings.Replace(pattern, "**/", "", 1)
 	}
 
-	
 	match = func(name string) bool {
 		for _, pattern := range processedMatchPatterns {
 			matched, err := filepath.Match(pattern, name)
@@ -83,7 +86,7 @@ func scanFolder(folder string, deep bool, wg *sync.WaitGroup) {
 		if entry.IsDir() {
 			if deep {
 				wg.Add(1)
-				go scanFolder(p, true, wg)
+				pool.Submit(func() { scanFolder(p, deep, wg) })
 			}
 		} else {
 			if !ignore(p) && match(p) {
